@@ -1,32 +1,139 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { Plus, Car, TrendingUp, Clock, Menu } from 'lucide-react';
+import { Plus, Car, TrendingUp, Clock } from 'lucide-react';
 import { AddVehicleModal, ViewVehicleModal } from '../../components/driver/VehicleModals';
 import { Sidebar } from '../../components/Sidebar';
 import { Navbar } from '../../components/Navbar';
+import { supabaseAdmin } from '../../supabaseClient';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'sonner';
 
 const DriverDashboard = () => {
-    const [vehicles, setVehicles] = useState([
-        {
-            id: 1,
-            make: 'Hyundai',
-            model: 'Creta',
-            number: 'KA03MW2024',
-            rcNumber: 'RC998877665',
-            expiry: '2028-05-15',
-            status: 'Verified'
-        }
-    ]);
-
+    const { user } = useAuth();
+    const [vehicles, setVehicles] = useState([]);
+    const [isLoadingVehicles, setIsLoadingVehicles] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [selectedVehicle, setSelectedVehicle] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
-    const handleAddVehicle = (newVehicle) => {
-        setVehicles([...vehicles, { ...newVehicle, id: vehicles.length + 1, status: 'Pending' }]);
+    const mapVehicle = (v) => ({
+        id: v.id,
+        make: v.company,
+        model: v.model,
+        number: v.registration_number,
+        rcNumber: v.rc_number,
+        expiry: v.insurance_number || 'N/A',
+        status: 'Verified',
+        dbRecord: v
+    });
+
+    useEffect(() => {
+        const fetchVehicles = async () => {
+            if (user?.email) {
+                try {
+                    const { data: userArr } = await supabaseAdmin
+                        .from('users')
+                        .select('id')
+                        .eq('email', user.email)
+                        .limit(1);
+
+                    const userId = userArr?.[0]?.id;
+                    if (!userId) {
+                        setIsLoadingVehicles(false);
+                        return;
+                    }
+
+                    // Fetch vehicles
+                    const { data: vehicleData } = await supabaseAdmin
+                        .from('vehicles')
+                        .select('*')
+                        .eq('user_id', userId);
+
+                    if (vehicleData && vehicleData.length > 0) {
+                        // Fetch images from vehicle_images table for each vehicle
+                        const vehicleIds = vehicleData.map(v => v.id);
+                        const { data: imageData } = await supabaseAdmin
+                            .from('vehicle_images')
+                            .select('vehicle_id, image_url')
+                            .in('vehicle_id', vehicleIds);
+
+                        // Group images by vehicle_id
+                        const imageMap = {};
+                        (imageData || []).forEach(img => {
+                            if (!imageMap[img.vehicle_id]) imageMap[img.vehicle_id] = [];
+                            imageMap[img.vehicle_id].push(img.image_url);
+                        });
+
+                        const mapped = vehicleData.map(v => mapVehicle({ ...v, image_urls: imageMap[v.id] || [] }));
+                        setVehicles(mapped);
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch vehicles', err);
+                } finally {
+                    setIsLoadingVehicles(false);
+                }
+            } else {
+                setIsLoadingVehicles(false);
+            }
+        };
+
+        fetchVehicles();
+    }, [user?.email]);
+
+    const handleAddVehicle = async (newVehicle) => {
+        try {
+            const { data: userArr } = await supabaseAdmin
+                .from('users')
+                .select('id')
+                .eq('email', user.email)
+                .limit(1);
+
+            const userId = userArr?.[0]?.id;
+            if (!userId) throw new Error('Your profile was not found in the database. Please contact support.');
+
+            const vehicleToInsert = {
+                company: newVehicle.make,
+                model: newVehicle.model,
+                registration_number: newVehicle.number,
+                rc_number: newVehicle.rcNumber,
+                insurance_number: newVehicle.expiry,
+                year_of_model: parseInt(newVehicle.year || new Date().getFullYear()),
+                has_ac: newVehicle.hasAc || false,
+                audio_system: newVehicle.audioSystem || 'Basic',
+                km_driven: parseInt(newVehicle.kmDriven || 0),
+                color: newVehicle.color || 'Unknown',
+                user_id: userId
+            };
+
+            const { data, error } = await supabaseAdmin
+                .from('vehicles')
+                .insert([vehicleToInsert])
+                .select();
+
+            if (error) throw error;
+
+            const inserted = data[0];
+
+            // Insert images into vehicle_images table if any were uploaded
+            const imageUrls = newVehicle.imageUrls || [];
+            if (imageUrls.length > 0) {
+                const imageRows = imageUrls.map(url => ({
+                    vehicle_id: inserted.id,
+                    image_url: url
+                }));
+                await supabaseAdmin.from('vehicle_images').insert(imageRows);
+            }
+
+            toast.success('Vehicle registered successfully and approved!');
+            setVehicles([...vehicles, mapVehicle({ ...inserted, image_urls: imageUrls })]);
+
+        } catch (err) {
+            console.error('Failed to register vehicle', err);
+            toast.error('Failed to register vehicle: ' + err.message);
+        }
     };
 
     const handleViewVehicle = (vehicle) => {
@@ -65,32 +172,53 @@ const DriverDashboard = () => {
                             </div>
 
                             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {vehicles.map((vehicle) => (
-                                    <div key={vehicle.id} className="relative group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden p-5" onClick={() => handleViewVehicle(vehicle)}>
-                                        <div className="absolute top-0 right-0 p-3">
-                                            <Badge className={vehicle.status === 'Verified' ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}>
-                                                {vehicle.status}
-                                            </Badge>
+                                {isLoadingVehicles ? (
+                                    <div className="p-8 text-center text-gray-400 col-span-3">Loading vehicles...</div>
+                                ) : vehicles.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-400 col-span-3">
+                                        <Car className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                                        <p className="font-medium">No vehicles registered yet.</p>
+                                        <p className="text-sm mt-1">Click "Register New Car" to add your vehicle.</p>
+                                    </div>
+                                ) : vehicles.map((vehicle) => (
+                                    <div key={vehicle.id} className="relative group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden" onClick={() => handleViewVehicle(vehicle)}>
+                                        {/* Car Image */}
+                                        <div className="h-36 w-full bg-slate-100 overflow-hidden">
+                                            {vehicle.dbRecord?.image_urls && vehicle.dbRecord.image_urls.length > 0 ? (
+                                                <img src={vehicle.dbRecord.image_urls[0]} alt={`${vehicle.make} ${vehicle.model}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center">
+                                                    <Car className="w-12 h-12 text-slate-300" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="absolute top-2 right-2">
+                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 shadow-sm">{vehicle.status}</Badge>
                                         </div>
 
-                                        <div className="flex items-center gap-4 mb-4">
-                                            <div className="h-12 w-12 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
-                                                <Car className="w-6 h-6" />
-                                            </div>
-                                            <div className="pr-12">
-                                                <h4 className="font-bold text-gray-900">{vehicle.make} {vehicle.model}</h4>
-                                                <p className="text-xs text-gray-500 font-mono tracking-wide">{vehicle.number}</p>
-                                            </div>
-                                        </div>
+                                        <div className="p-4">
+                                            <h4 className="font-bold text-gray-900 text-lg">{vehicle.make} {vehicle.model}</h4>
+                                            <p className="text-xs text-gray-500 font-mono tracking-wide mb-2">{vehicle.number}</p>
 
-                                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 border-t pt-3 mt-2 border-dashed">
-                                            <div>
-                                                <span className="block text-[10px] uppercase font-semibold text-gray-300">RC Number</span>
-                                                <span className="font-medium text-gray-700 truncate">{vehicle.rcNumber}</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="block text-[10px] uppercase font-semibold text-gray-300">Expires</span>
-                                                <span className="font-medium text-gray-700">{vehicle.expiry}</span>
+                                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 border-t pt-3 mt-2 border-dashed">
+                                                <div>
+                                                    <span className="block text-[10px] uppercase font-semibold text-gray-300">Color</span>
+                                                    <span className="font-medium text-gray-700">{vehicle.dbRecord?.color || 'N/A'}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="block text-[10px] uppercase font-semibold text-gray-300">Year</span>
+                                                    <span className="font-medium text-gray-700">{vehicle.dbRecord?.year_of_model || 'N/A'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-[10px] uppercase font-semibold text-gray-300">KM Driven</span>
+                                                    <span className="font-medium text-gray-700">{vehicle.dbRecord?.km_driven != null ? `${vehicle.dbRecord.km_driven} km` : 'N/A'}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="block text-[10px] uppercase font-semibold text-gray-300">AC</span>
+                                                    <span className={`font-medium ${vehicle.dbRecord?.has_ac ? 'text-green-600' : 'text-gray-400'}`}>
+                                                        {vehicle.dbRecord?.has_ac ? 'Yes' : 'No'}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -146,13 +274,13 @@ const DriverDashboard = () => {
                                                     IMG
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <h5 className="font-bold text-gray-900 text-sm">{i === 0 ? "Office Drop - Tech Park" : i === 1 ? "Airport Pickup" : "Mall Visit - Weekend"}</h5>
+                                                    <h5 className="font-bold text-gray-900 text-sm">{i === 0 ? 'Office Drop - Tech Park' : i === 1 ? 'Airport Pickup' : 'Mall Visit - Weekend'}</h5>
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                                                        <Clock className="w-3 h-3" /> {i === 0 ? "Today, 09:00 AM" : "Yesterday, 8:45 PM"}
+                                                        <Clock className="w-3 h-3" /> {i === 0 ? 'Today, 09:00 AM' : 'Yesterday, 8:45 PM'}
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="font-bold text-green-600">+{i === 1 ? "₹450.00" : "₹200.00"}</p>
+                                                    <p className="font-bold text-green-600">+{i === 1 ? '₹450.00' : '₹200.00'}</p>
                                                     <p className="text-[10px] uppercase font-bold text-gray-400">Completed</p>
                                                 </div>
                                             </div>

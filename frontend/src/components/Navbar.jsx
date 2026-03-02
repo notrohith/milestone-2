@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
 import { Menu } from "lucide-react";
+import { toast } from "sonner";
 
 /**
  * Navbar component updated to match the new design while preserving authentication logic.
@@ -20,6 +21,8 @@ const Navbar = ({ onToggleSidebar }) => {
     const handleAuthNavigation = (path) => {
         if (!user) {
             navigate("/login");
+        } else if (path === '/create-ride' && (user.role === 'PASSENGER' || user.role === 'RIDER')) {
+            toast.error("Riders can't access Offer a ride");
         } else {
             navigate(path);
         }
@@ -46,7 +49,9 @@ const Navbar = ({ onToggleSidebar }) => {
             <div className="hidden md:flex items-center gap-8">
                 <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">Home</Link>
                 <button onClick={() => handleAuthNavigation('/search')} className="text-sm font-medium hover:text-primary transition-colors bg-transparent border-none cursor-pointer">Find a Ride</button>
-                <button onClick={() => handleAuthNavigation('/create-ride')} className="text-sm font-medium hover:text-primary transition-colors bg-transparent border-none cursor-pointer">Offer a Ride</button>
+                {user?.role === 'DRIVER' && (
+                    <button onClick={() => handleAuthNavigation('/create-ride')} className="text-sm font-medium hover:text-primary transition-colors bg-transparent border-none cursor-pointer">Offer a Ride</button>
+                )}
 
                 {!user ? (
                     <div className="flex items-center gap-4">
@@ -58,7 +63,11 @@ const Navbar = ({ onToggleSidebar }) => {
                 ) : (
                     <div className="flex items-center gap-4 border-l border-border pl-4">
                         <Link to="/my-rides" className="text-sm font-medium hover:text-primary transition-colors">My Rides</Link>
-                        <Link to="/driver/dashboard" className="text-sm font-medium hover:text-primary transition-colors">Driver Hub</Link>
+                        {(user.role === 'RIDER' || user.role === 'PASSENGER') ? (
+                            <Link to="/rider/dashboard" className="text-sm font-medium hover:text-primary transition-colors">Rider Hub</Link>
+                        ) : user.role === 'DRIVER' ? (
+                            <Link to="/driver/dashboard" className="text-sm font-medium hover:text-primary transition-colors">Driver Hub</Link>
+                        ) : null}
                         <Link to="/profile" className="text-sm font-medium hover:text-primary transition-colors">Profile</Link>
                         <span className="text-sm text-muted-foreground hidden lg:inline-block">{user.email}</span>
                         <Button variant="destructive" size="sm" onClick={handleLogout}>Logout</Button>

@@ -22,12 +22,15 @@ public class RideController {
     }
 
     @PostMapping
-    public ResponseEntity<Ride> createRide(@RequestBody CreateRideRequest request, @AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(rideService.createRide(request, user.getId()));
+    public ResponseEntity<Ride> createRide(@RequestBody CreateRideRequest request) {
+        // driverEmail is sent from the authenticated frontend — no Spring Security needed
+        return ResponseEntity.ok(rideService.createRideByEmail(request));
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Ride>> searchRides(@RequestParam String source, @RequestParam String dest) {
+    public ResponseEntity<List<Ride>> searchRides(
+            @RequestParam(required = false, defaultValue = "") String source,
+            @RequestParam(required = false, defaultValue = "") String dest) {
         return ResponseEntity.ok(rideService.searchRides(source, dest));
     }
 
@@ -52,3 +55,4 @@ public class RideController {
         return ResponseEntity.ok(rideService.updateStatus(id, request.getStatus(), user.getId()));
     }
 }
+

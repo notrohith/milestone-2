@@ -7,5 +7,5 @@ public class EducationDto {
     private String level;
     private String institutionName;
     private String passingYear;
-    private Double percentage;
+    private String percentage; // Received as string from form input; parsed to Double in AuthService
 }

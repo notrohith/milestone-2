@@ -8,6 +8,9 @@ import { Button } from './ui/button';
 export const Sidebar = ({ isOpen, onClose }) => {
     const { user, signOut } = useAuth();
 
+    const isDriver = user?.role?.toUpperCase() === 'DRIVER';
+    const isRider = user?.role?.toUpperCase() === 'RIDER' || user?.role?.toUpperCase() === 'PASSENGER';
+
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
             <SheetContent side="left">
@@ -22,8 +25,15 @@ export const Sidebar = ({ isOpen, onClose }) => {
                     {user && (
                         <>
                             <Link to="/my-rides" onClick={onClose} className="block text-lg hover:text-primary transition-colors">My Rides</Link>
-                            <Link to="/create-ride" onClick={onClose} className="block text-lg hover:text-primary transition-colors">Create Ride</Link>
-                            <Link to="/driver/dashboard" onClick={onClose} className="block text-lg hover:text-primary transition-colors">Driver Hub</Link>
+                            {isDriver && (
+                                <>
+                                    <Link to="/create-ride" onClick={onClose} className="block text-lg hover:text-primary transition-colors">Create Ride</Link>
+                                    <Link to="/driver/dashboard" onClick={onClose} className="block text-lg hover:text-primary transition-colors">Driver Hub</Link>
+                                </>
+                            )}
+                            {isRider && (
+                                <Link to="/rider/dashboard" onClick={onClose} className="block text-lg hover:text-primary transition-colors">Rider Hub</Link>
+                            )}
                             <Link to="/profile" onClick={onClose} className="block text-lg hover:text-primary transition-colors">Profile</Link>
                         </>
                     )}

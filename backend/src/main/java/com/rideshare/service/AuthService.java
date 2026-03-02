@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,31 +26,44 @@ public class AuthService {
 
     @Transactional
     public User syncUser(SyncUserRequest request) {
-        return userRepository.findById(request.getId())
-                .map(existingUser -> {
-                    // Update fields if necessary
-                    existingUser.setEmail(request.getEmail());
-                    existingUser.setName(request.getName());
-                    // Role typically shouldn't change via sync, but for simplicity:
-                    // existingUser.setRole(request.getRole());
-                    return userRepository.save(existingUser);
-                })
-                .orElseGet(() -> {
-                    User newUser = new User();
-                    newUser.setId(request.getId());
-                    newUser.setEmail(request.getEmail());
-                    newUser.setName(request.getName());
-                    newUser.setRole(request.getRole());
-                    newUser.setStatus(UserStatus.PENDING); // Default status
-                    return userRepository.save(newUser);
-                });
+        // First try by the Supabase Auth UUID
+        Optional<User> byId = userRepository.findById(request.getId());
+        if (byId.isPresent()) {
+            User existingUser = byId.get();
+            existingUser.setEmail(request.getEmail());
+            existingUser.setName(request.getName());
+            return userRepository.save(existingUser);
+        }
+
+        // Fallback: find by email (user was registered with a different UUID)
+        Optional<User> byEmail = userRepository.findFirstByEmail(request.getEmail());
+        if (byEmail.isPresent()) {
+            // User exists — just update name, don't create a duplicate
+            User existingUser = byEmail.get();
+            if (request.getName() != null) existingUser.setName(request.getName());
+            return userRepository.save(existingUser);
+        }
+
+        // Truly new user — create with the Supabase Auth UUID
+        User newUser = new User();
+        newUser.setId(request.getId());
+        newUser.setEmail(request.getEmail());
+        newUser.setName(request.getName());
+        newUser.setRole(request.getRole());
+        newUser.setStatus(UserStatus.PENDING);
+        return userRepository.save(newUser);
     }
 
     @Transactional
     public User registerUser(FullRegistrationRequest request) {
-        User user = userRepository.findById(request.getId()).orElse(new User());
-        
-        user.setId(request.getId());
+        // Look up by email first — Supabase ID won't exist yet at registration time
+        User user = userRepository.findFirstByEmail(request.getEmail()).orElse(new User());
+
+        // Assign ID: use provided Supabase ID if given, otherwise auto-generate one
+        if (user.getId() == null) {
+            user.setId(request.getId() != null ? request.getId() : UUID.randomUUID());
+        }
+
         user.setEmail(request.getEmail());
         user.setName(request.getName());
         user.setRole(request.getRole());
@@ -69,7 +84,12 @@ public class AuthService {
                 edu.setLevel(dto.getLevel());
                 edu.setInstitutionName(dto.getInstitutionName());
                 edu.setPassingYear(dto.getPassingYear());
-                edu.setPercentage(dto.getPercentage());
+                try {
+                    edu.setPercentage(dto.getPercentage() != null && !dto.getPercentage().isBlank()
+                        ? Double.parseDouble(dto.getPercentage()) : null);
+                } catch (NumberFormatException e) {
+                    edu.setPercentage(null);
+                }
                 edu.setUser(user);
                 return edu;
             }).collect(Collectors.toList());

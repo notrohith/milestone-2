@@ -29,9 +29,15 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll() // Allow auth endpoints (sync)
-                .requestMatchers("/api/rides/search").permitAll() // Allow searching without login? Maybe req login
-                .requestMatchers("/api/admin/reload-schema").permitAll() // Allow schema reload
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/files/**").permitAll()
+                .requestMatchers("/api/rides/search").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/rides").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/rides/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/vehicles/**").permitAll()
+                .requestMatchers("/api/admin/reload-schema").permitAll()
+                .requestMatchers("/api/admin/send-approval-email").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -39,12 +45,13 @@ public class SecurityConfig {
         return http.build();
     }
 
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000")); // React Frontend
+        configuration.setAllowedOriginPatterns(Arrays.asList("*")); // Allow all network IP accesses during development
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(Arrays.asList("*")); // Allow ALL headers
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

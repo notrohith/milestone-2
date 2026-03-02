@@ -11,55 +11,11 @@ export function cn(...inputs) {
 // <Select value={sortBy} onValueChange={setSortBy}>
 //   <SelectTrigger><SelectValue /></SelectTrigger>
 //   <SelectContent><SelectItem value="...">...</SelectItem></SelectContent>
-// </Select>
 
-const SelectContext = React.createContext({})
-
-const Select = ({ children, value, onValueChange }) => {
-    return (
-        <SelectContext.Provider value={{ value, onValueChange }}>
-            <div className="relative inline-block w-full">{children}</div>
-        </SelectContext.Provider>
-    )
-}
-
-const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) => {
-    return (
-        <div
-            ref={ref}
-            className={cn(
-                "flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                className
-            )}
-            {...props}
-        >
-            {children}
-        </div>
-    )
-})
-
-const SelectValue = ({ placeholder }) => {
-    const { value } = React.useContext(SelectContext)
-    return <span>{value || placeholder}</span>
-}
-
-// Simplified Content/Item to just render a native select overlay or similar
-// For simplicity in this environment without full Radix primitives,
-// we'll actually have to be a bit creative.
-// The user code expects a composable API. 
-// A true accurate implementation without Radix is complex.
-// strategy: Map the children compisition to a native select if possible, 
-// OR just implement a basic custom dropdown.
-
-// Implementing basic custom dropdown
-const SelectContent = ({ className, children, position = "popper", ...props }) => {
-    const [isOpen, setIsOpen] = React.useState(false) // This state should ideally be in Select, but for this quick fix...
-    // Wait, the Trigger needs to toggle. 
-    // Let's refactor Select to hold open state.
-    return null; // See refined implementation below
-}
 
 // RE-IMPLEMENTING with state in parent
+const SelectContext = React.createContext({})
+
 const SelectActual = ({ children, value, onValueChange }) => {
     const [open, setOpen] = React.useState(false)
     return (
@@ -124,6 +80,15 @@ const SelectItem = React.forwardRef(({ className, children, value, ...props }, r
             </span>
             <span className="truncate">{children}</span>
         </div>
+    )
+})
+
+const SelectValue = React.forwardRef(({ className, placeholder = "Select an option", ...props }, ref) => {
+    const { value } = React.useContext(SelectContext)
+    return (
+        <span ref={ref} className={cn("truncate", className)} {...props}>
+            {value || placeholder}
+        </span>
     )
 })
 

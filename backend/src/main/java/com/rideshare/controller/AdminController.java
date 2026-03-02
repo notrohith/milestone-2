@@ -1,8 +1,10 @@
 package com.rideshare.controller;
 
+import com.rideshare.dto.SendApprovalEmailRequest;
 import com.rideshare.model.User;
 import com.rideshare.model.UserStatus;
 import com.rideshare.repository.UserRepository;
+import com.rideshare.service.EmailService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -13,9 +15,11 @@ import java.util.UUID;
 public class AdminController {
 
     private final UserRepository userRepository;
+    private final EmailService emailService;
 
-    public AdminController(UserRepository userRepository) {
+    public AdminController(UserRepository userRepository, EmailService emailService) {
         this.userRepository = userRepository;
+        this.emailService = emailService;
     }
 
     @GetMapping("/pending-users")
@@ -53,6 +57,22 @@ public class AdminController {
                     return ResponseEntity.ok(userRepository.save(user));
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Sends the approval email via Resend (called by the frontend after creating the Supabase Auth account).
+     * Runs server-side to avoid CORS restrictions when calling the Resend API.
+     */
+    @CrossOrigin(origins = "http://localhost:3000")
+    @PostMapping("/send-approval-email")
+    public ResponseEntity<String> sendApprovalEmail(@RequestBody SendApprovalEmailRequest req) {
+        try {
+            String loginUrl = "http://localhost:3000/login";
+            emailService.sendApprovalEmail(req.getEmail(), req.getName(), req.getTempPassword(), loginUrl);
+            return ResponseEntity.ok("Email sent successfully");
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Failed to send email: " + e.getMessage());
+        }
     }
 
     @jakarta.persistence.PersistenceContext

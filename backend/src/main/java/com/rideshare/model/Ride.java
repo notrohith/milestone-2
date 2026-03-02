@@ -42,4 +42,26 @@ public class Ride {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RideStatus status;
+
+    // Extended fields
+    @Column(columnDefinition = "TEXT")
+    private String pickupPoints; // Comma-separated
+
+    @Column(columnDefinition = "TEXT")
+    private String dropPoints; // Comma-separated
+
+    @Column
+    private Boolean hasAc;
+
+    @Column
+    private Boolean luggageAllowed;
+
+    @Column
+    private String genderPreference;
+
+    @Column
+    private Double distanceKm;
+
+    @Column
+    private String vehicleId;
 }

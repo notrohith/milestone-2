@@ -1,5 +1,6 @@
 package com.rideshare.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.rideshare.model.Role;
 import lombok.Data;
 import java.util.UUID;
@@ -13,6 +14,7 @@ public class FullRegistrationRequest {
     private String name;
     private Role role;
     private String phoneNumber;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate dateOfBirth;
     private String gender;
     private String address;

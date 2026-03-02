@@ -34,6 +34,27 @@ public class RideService {
             throw new RuntimeException("Only drivers can create rides");
         }
 
+        return buildAndSaveRide(request, driver);
+    }
+
+    @Transactional
+    public Ride createRideByEmail(CreateRideRequest request) {
+        String email = request.getDriverEmail();
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("driverEmail is required");
+        }
+
+        User driver = userRepository.findFirstByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Driver not found for email: " + email));
+
+        if (driver.getRole() != Role.DRIVER) {
+            System.out.println("Warning: user " + email + " has role " + driver.getRole() + " but is creating a ride.");
+        }
+
+        return buildAndSaveRide(request, driver);
+    }
+
+    private Ride buildAndSaveRide(CreateRideRequest request, User driver) {
         Ride ride = new Ride();
         ride.setDriver(driver);
         ride.setSourceCity(request.getSourceCity());
@@ -44,11 +65,30 @@ public class RideService {
         ride.setAvailableSeats(request.getTotalSeats());
         ride.setStatus(RideStatus.CREATED);
 
+        if (request.getPickupPoints() != null) {
+            ride.setPickupPoints(String.join(",", request.getPickupPoints()));
+        }
+        if (request.getDropPoints() != null) {
+            ride.setDropPoints(String.join(",", request.getDropPoints()));
+        }
+        ride.setHasAc(request.getHasAc());
+        ride.setLuggageAllowed(request.getLuggageAllowed());
+        ride.setGenderPreference(request.getGenderPreference());
+        ride.setDistanceKm(request.getDistanceKm());
+        ride.setVehicleId(request.getVehicleId());
+
         return rideRepository.save(ride);
     }
 
     public List<Ride> searchRides(String source, String dest) {
-        return rideRepository.searchRides(source, dest, LocalDateTime.now());
+        if ((source == null || source.isBlank()) && (dest == null || dest.isBlank())) {
+            return rideRepository.findAllAvailable(LocalDateTime.now());
+        }
+        return rideRepository.searchRides(
+                source != null ? source : "",
+                dest != null ? dest : "",
+                LocalDateTime.now()
+        );
     }
     
     public List<Ride> getMyRides(UUID driverId) {

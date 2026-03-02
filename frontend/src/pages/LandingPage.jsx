@@ -5,8 +5,6 @@ import { Sidebar } from '../components/Sidebar';
 import { HeroSection } from '../components/HeroSection';
 import { InfoHighlights } from '../components/InfoHighlights';
 import { HowItWorks } from '../components/HowItWorks';
-import { RiderDriverSection } from '../components/RiderDriverSection';
-import { VisualStrip } from '../components/VisualStrip';
 import { CTASection } from '../components/CTASection';
 
 export default function LandingPage() {
@@ -40,25 +38,25 @@ export default function LandingPage() {
                             <div>
                                 <h4 className="font-semibold mb-4">Platform</h4>
                                 <ul className="space-y-2 text-sm text-gray-400">
-                                    <li><a href="#" className="hover:text-white transition-colors">How It Works</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">For Riders</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">For Drivers</a></li>
+                                    <li><button className="hover:text-white transition-colors">How It Works</button></li>
+                                    <li><button className="hover:text-white transition-colors">For Riders</button></li>
+                                    <li><button className="hover:text-white transition-colors">For Drivers</button></li>
                                 </ul>
                             </div>
                             <div>
                                 <h4 className="font-semibold mb-4">Company</h4>
                                 <ul className="space-y-2 text-sm text-gray-400">
-                                    <li><a href="#" className="hover:text-white transition-colors">About Us</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
+                                    <li><button className="hover:text-white transition-colors">About Us</button></li>
+                                    <li><button className="hover:text-white transition-colors">Contact</button></li>
+                                    <li><button className="hover:text-white transition-colors">Careers</button></li>
                                 </ul>
                             </div>
                             <div>
                                 <h4 className="font-semibold mb-4">Legal</h4>
                                 <ul className="space-y-2 text-sm text-gray-400">
-                                    <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
+                                    <li><button className="hover:text-white transition-colors">Privacy Policy</button></li>
+                                    <li><button className="hover:text-white transition-colors">Terms of Service</button></li>
+                                    <li><button className="hover:text-white transition-colors">Cookie Policy</button></li>
                                 </ul>
                             </div>
                         </div>

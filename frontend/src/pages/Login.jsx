@@ -6,11 +6,13 @@ import { FcGoogle } from "react-icons/fc";
 import { FaEnvelope, FaLock } from "react-icons/fa";
 import { motion } from "framer-motion";
 import { Navbar } from "../components/Navbar";
+import ChangePasswordModal from "../components/ChangePasswordModal";
 
 function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    const [showChangePassword, setShowChangePassword] = useState(false);
     const { signInWithGoogle } = useAuth();
     const navigate = useNavigate();
 
@@ -26,26 +28,54 @@ function Login() {
     const login = async (e) => {
         e.preventDefault();
         setLoading(true);
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
 
-        if (error) {
-            alert(error.message);
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+
+            if (error) {
+                alert(error.message);
+                setLoading(false);
+                return;
+            }
+
+            // Check if this is the user's first login via the returned user data
+            const isFirstLogin = data?.user?.user_metadata?.firstLogin === true;
+
+            if (isFirstLogin) {
+                setLoading(false);
+                setShowChangePassword(true);
+                return;
+            }
+
+            // Redirect based on email
+            if (email === 'rohith@corideadmin.com') {
+                navigate('/admin');
+            } else {
+                navigate('/');
+            }
+        } catch (err) {
+            alert('Login failed: ' + err.message);
+        } finally {
             setLoading(false);
-            return;
         }
-        if (email === 'rohith@corideadmin.com') {
-            navigate("/admin");
-        } else {
-            navigate("/home");
-        }
+    };
+
+    const handlePasswordChanged = () => {
+        setShowChangePassword(false);
+        navigate('/');
     };
 
     return (
         <div className="min-h-screen bg-gray-50">
             <Navbar onToggleSidebar={() => { }} />
+
+            {/* First-Login Password Change Modal */}
+            {showChangePassword && (
+                <ChangePasswordModal onSuccess={handlePasswordChanged} />
+            )}
             <div className="flex items-center justify-center min-h-screen py-12 px-4 sm:px-6 lg:px-8">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}

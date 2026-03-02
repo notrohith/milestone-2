@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from './ui/button';
-import { ArrowRight, CheckCircle, MapPin, Star, Leaf } from 'lucide-react';
+import { CheckCircle, Star, Leaf } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';

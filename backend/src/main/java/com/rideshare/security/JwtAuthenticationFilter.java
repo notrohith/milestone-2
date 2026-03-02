@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +35,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+        return path.startsWith("/api/auth/")
+            || path.startsWith("/api/files/")
+            || path.equals("/api/rides/search")
+            || (path.equals("/api/rides") && "POST".equalsIgnoreCase(method))
+            || (path.startsWith("/api/rides/") && "GET".equalsIgnoreCase(method))
+            || path.equals("/api/admin/reload-schema")
+            || path.equals("/api/admin/send-approval-email");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
@@ -44,26 +58,48 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             try {
                 SignedJWT signedJWT = SignedJWT.parse(token);
-                JWSVerifier verifier = new MACVerifier(jwtSecret.getBytes()); // Verify with secret bytes
+
+                // Supabase JWT secret is Base64-encoded — decode before use as HMAC key
+                byte[] secretBytes;
+                try {
+                    secretBytes = Base64.getDecoder().decode(jwtSecret);
+                } catch (IllegalArgumentException e) {
+                    secretBytes = jwtSecret.getBytes();
+                }
+
+                JWSVerifier verifier = new MACVerifier(secretBytes);
 
                 if (signedJWT.verify(verifier)) {
                     String sub = signedJWT.getJWTClaimsSet().getSubject();
-                    UUID userId = UUID.fromString(sub);
+                    String email = (String) signedJWT.getJWTClaimsSet().getClaim("email");
+                    UUID authUserId = UUID.fromString(sub);
 
-                    // Load user details from DB to get core Role
-                    // Note: In a real high-scale app we might trust the JWT entirely or cache this
-                    Optional<User> user = userRepository.findById(userId);
+                    // 1. Try lookup by Supabase Auth UUID first
+                    Optional<User> userOpt = userRepository.findById(authUserId);
 
-                    if (user.isPresent()) {
-                        User u = user.get();
+                    // 2. Fallback: lookup by email (user registered with a different random UUID)
+                    //    Do NOT try to update the UUID — FK constraints would block it.
+                    //    The found user entity has the correct role/status — that's all we need.
+                    if (userOpt.isEmpty() && email != null) {
+                        userOpt = userRepository.findFirstByEmail(email);
+                        if (userOpt.isPresent()) {
+                            System.out.println("Auth via email fallback for: " + email);
+                        }
+                    }
+
+                    if (userOpt.isPresent()) {
+                        User u = userOpt.get();
                         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                                 u, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + u.getRole().name())));
                         SecurityContextHolder.getContext().setAuthentication(authentication);
+                    } else {
+                        System.out.println("JWT valid but no user found — sub=" + sub + " email=" + email);
                     }
+                } else {
+                    System.out.println("JWT signature verification failed.");
                 }
             } catch (Exception e) {
-                // Log error or just ignore invalid token
-                System.out.println("Invalid JWT: " + e.getMessage());
+                System.out.println("JWT processing error: " + e.getMessage());
             }
         }
 

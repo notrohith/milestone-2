@@ -1,10 +1,12 @@
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { FaShieldAlt, FaWallet, FaBolt, FaArrowRight } from "react-icons/fa";
 
 const Home = () => {
     const { user } = useAuth();
+    const [showRestrictModal, setShowRestrictModal] = useState(false);
 
     const fadeInUp = {
         hidden: { opacity: 0, y: 60 },
@@ -57,14 +59,70 @@ const Home = () => {
                                 Join Now
                             </Link>
                         )}
-                        {user && user.role === 'DRIVER' && (
-                            <Link to="/create-ride" className="bg-white text-gray-900 px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-100 transition-all shadow-lg transform hover:scale-105">
-                                Offer a Ride
-                            </Link>
+                        {user && (
+                            user.role === 'DRIVER' ? (
+                                <Link to="/create-ride" className="bg-white text-gray-900 px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-100 transition-all shadow-lg transform hover:scale-105">
+                                    Offer a Ride
+                                </Link>
+                            ) : (
+                                <button
+                                    onClick={() => setShowRestrictModal(true)}
+                                    className="bg-white text-gray-900 px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-100 transition-all shadow-lg transform hover:scale-105"
+                                >
+                                    Offer a Ride
+                                </button>
+                            )
                         )}
                     </motion.div>
                 </div>
             </div>
+
+            {/* Rider Restriction Modal */}
+            <AnimatePresence>
+                {showRestrictModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center"
+                    >
+                        {/* Backdrop */}
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowRestrictModal(false)} />
+
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            transition={{ duration: 0.3 }}
+                            className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+                        >
+                            <div className="bg-red-50 p-6 flex flex-col items-center justify-center border-b border-red-100">
+                                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                                    <FaShieldAlt className="text-3xl text-red-500" />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900 text-center">Action Restricted</h3>
+                            </div>
+                            <div className="p-6 text-center space-y-4">
+                                <p className="text-gray-600 leading-relaxed">
+                                    Your account is registered as a <span className="font-bold text-gray-800">Rider</span>.
+                                    Rider profiles are configured strictly to join rides, not offer them.
+                                </p>
+                                <p className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border">
+                                    If you wish to offer rides, please sign up again using a different email address as a <span className="font-semibold">Driver</span>.
+                                </p>
+                                <div className="pt-2">
+                                    <button
+                                        onClick={() => setShowRestrictModal(false)}
+                                        className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold hover:bg-gray-800 transition-colors"
+                                    >
+                                        I Understand
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Features Section */}
             <section className="py-24 bg-white relative z-20 -mt-10 rounded-t-3xl shadow-2xl mx-4 md:mx-0">

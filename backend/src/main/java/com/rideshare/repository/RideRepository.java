@@ -11,6 +11,9 @@ import java.util.List;
 public interface RideRepository extends JpaRepository<Ride, Long> {
     List<Ride> findByDriverId(java.util.UUID driverId);
 
-    @Query("SELECT r FROM Ride r WHERE r.sourceCity = :source AND r.destinationCity = :dest AND r.startTime > :now AND r.availableSeats > 0 AND r.status = 'CREATED'")
+    @Query("SELECT r FROM Ride r WHERE LOWER(r.sourceCity) LIKE LOWER(CONCAT('%', :source, '%')) AND LOWER(r.destinationCity) LIKE LOWER(CONCAT('%', :dest, '%')) AND r.startTime > :now AND r.availableSeats > 0 AND r.status = 'CREATED'")
     List<Ride> searchRides(@Param("source") String source, @Param("dest") String dest, @Param("now") LocalDateTime now);
+
+    @Query("SELECT r FROM Ride r WHERE r.startTime > :now AND r.availableSeats > 0 AND r.status = 'CREATED' ORDER BY r.startTime ASC")
+    List<Ride> findAllAvailable(@Param("now") LocalDateTime now);
 }

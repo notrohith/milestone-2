@@ -1,91 +1,148 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Car, MapPin, Calendar, Users, DollarSign } from "lucide-react";
-// Navbar is already in App.js
+import { Navbar } from "../components/Navbar";
+import { Sidebar } from "../components/Sidebar";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
-
-const mockDriverRides = [
-    {
-        id: "1",
-        source: "Mumbai",
-        destination: "Pune",
-        startTime: "2026-02-10T09:00:00",
-        pricePerKm: 5,
-        availableSeats: 2,
-        totalSeats: 4,
-        status: "scheduled",
-    },
-    {
-        id: "2",
-        source: "Delhi",
-        destination: "Agra",
-        startTime: "2026-02-08T08:00:00",
-        pricePerKm: 6,
-        availableSeats: 1,
-        totalSeats: 3,
-        status: "completed",
-    },
-];
-
-const mockRiderRides = [
-    {
-        id: "1",
-        source: "Bangalore",
-        destination: "Chennai",
-        startTime: "2026-02-11T10:00:00",
-        fare: 750,
-        joinPoint: "Koramangala",
-        dropPoint: "T Nagar",
-        status: "scheduled",
-    },
-    {
-        id: "2",
-        source: "Hyderabad",
-        destination: "Vijayawada",
-        startTime: "2026-02-07T07:00:00",
-        fare: 450,
-        joinPoint: "Secunderabad",
-        dropPoint: "Benz Circle",
-        status: "completed",
-    },
-];
+import { supabase } from "../supabaseClient";
 
 const statusColors = {
-    scheduled: "bg-blue-100 text-blue-700 border-blue-200",
-    ongoing: "bg-green-100 text-green-700 border-green-200",
-    completed: "bg-gray-100 text-gray-700 border-gray-200",
+    CREATED: "bg-blue-100 text-blue-700 border-blue-200",
+    OPEN: "bg-indigo-100 text-indigo-700 border-indigo-200",
+    STARTED: "bg-green-100 text-green-700 border-green-200",
+    COMPLETED: "bg-gray-100 text-gray-700 border-gray-200",
+    CANCELLED: "bg-red-100 text-red-700 border-red-200",
 };
 
 const statusLabels = {
-    scheduled: "Scheduled",
-    ongoing: "Ongoing",
-    completed: "Completed",
+    CREATED: "Created",
+    OPEN: "Open",
+    STARTED: "Ongoing",
+    COMPLETED: "Completed",
+    CANCELLED: "Cancelled",
 };
 
 export default function MyRidesPage() {
     const { user } = useAuth();
     const userRole = user?.role?.toLowerCase() || "rider";
 
-    const [driverRides] = useState(mockDriverRides);
-    const [riderRides] = useState(mockRiderRides);
+    const [driverRides, setDriverRides] = useState([]);
+    const [riderRides, setRiderRides] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState("scheduled"); // Assuming a default tab for driver/rider views
 
-    const handleStartRide = (rideId) => {
-        toast.success("Ride started successfully!");
+    useEffect(() => {
+        if (!user?.email) return;
+        fetchRides();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, activeTab]);
+
+    const fetchRides = async () => {
+        setLoading(true);
+        try {
+            // Get user's UUID from their auth email
+            const { data: userData } = await supabase
+                .from("users")
+                .select("id")
+                .eq("email", user.email)
+                .limit(1);
+
+            if (!userData || userData.length === 0) return;
+            const uid = userData[0].id;
+
+            if (userRole === "driver") {
+                // Fetch rides created by this driver
+                const { data, error } = await supabase
+                    .from("rides")
+                    .select("*")
+                    .eq("driver_id", uid)
+                    .order("start_time", { ascending: false });
+
+                if (error) throw error;
+
+                const formatted = data.map(r => ({
+                    id: r.id,
+                    source: r.source_city,
+                    destination: r.destination_city,
+                    startTime: r.start_time,
+                    pricePerKm: r.price_per_seat, // displayed as per seat generally
+                    availableSeats: r.available_seats,
+                    totalSeats: r.total_seats,
+                    status: r.status,
+                }));
+                setDriverRides(formatted);
+            } else {
+                // Fetch rides joined by this rider
+                const { data, error } = await supabase
+                    .from("ride_participants")
+                    .select("*, rides(*)")
+                    .eq("rider_id", uid);
+
+                if (error) throw error;
+
+                const formatted = data.map(p => ({
+                    id: p.rides.id,
+                    source: p.rides.source_city,
+                    destination: p.rides.destination_city,
+                    startTime: p.rides.start_time,
+                    fare: p.fare_at_booking,
+                    joinPoint: p.rides.source_city, // Fallback if no specific point
+                    dropPoint: p.rides.destination_city,
+                    status: p.rides.status,
+                }));
+
+                // Sort descending
+                formatted.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+                setRiderRides(formatted);
+            }
+        } catch (error) {
+            console.error("Error fetching rides:", error);
+            toast.error("Failed to load rides");
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleCompleteRide = (rideId) => {
-        toast.success("Ride completed successfully!");
+    const handleStartRide = async (rideId) => {
+        try {
+            const { error } = await supabase
+                .from("rides")
+                .update({ status: "STARTED" })
+                .eq("id", rideId);
+            if (error) throw error;
+            toast.success("Ride started successfully!");
+            fetchRides();
+        } catch (e) {
+            toast.error("Failed to start ride");
+        }
+    };
+
+    const handleCompleteRide = async (rideId) => {
+        try {
+            const { error } = await supabase
+                .from("rides")
+                .update({ status: "COMPLETED" })
+                .eq("id", rideId);
+            if (error) throw error;
+            toast.success("Ride completed successfully!");
+            fetchRides();
+        } catch (e) {
+            toast.error("Failed to complete ride");
+        }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="flex flex-col min-h-screen bg-slate-50">
+            <Navbar onToggleSidebar={() => setSidebarOpen(true)} />
+            <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="mb-8">
+            <div className="flex-1 pt-[72px] max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+                <div className="mb-8 mt-4">
                     <h1 className="text-3xl font-semibold mb-2 text-slate-900">My Rides</h1>
                     <p className="text-slate-500">
                         {userRole === "driver"
@@ -94,7 +151,9 @@ export default function MyRidesPage() {
                     </p>
                 </div>
 
-                {userRole === "driver" ? (
+                {loading ? (
+                    <div className="text-center py-16 text-slate-500">Loading your rides...</div>
+                ) : userRole === "driver" ? (
                     <DriverRidesView
                         rides={driverRides}
                         onStartRide={handleStartRide}
@@ -113,6 +172,7 @@ function DriverRidesView({
     onStartRide,
     onCompleteRide
 }) {
+    // Map OPEN/CREATED to scheduled, STARTED to ongoing
     return (
         <Tabs defaultValue="scheduled" className="w-full">
             <TabsList className="grid w-full max-w-md grid-cols-3 bg-slate-200">
@@ -123,7 +183,7 @@ function DriverRidesView({
 
             <TabsContent value="scheduled" className="mt-6">
                 <RidesList
-                    rides={rides.filter(r => r.status === "scheduled")}
+                    rides={rides.filter(r => r.status === "CREATED" || r.status === "OPEN")}
                     onStartRide={onStartRide}
                     onCompleteRide={onCompleteRide}
                 />
@@ -131,7 +191,7 @@ function DriverRidesView({
 
             <TabsContent value="ongoing" className="mt-6">
                 <RidesList
-                    rides={rides.filter(r => r.status === "ongoing")}
+                    rides={rides.filter(r => r.status === "STARTED")}
                     onStartRide={onStartRide}
                     onCompleteRide={onCompleteRide}
                 />
@@ -139,7 +199,7 @@ function DriverRidesView({
 
             <TabsContent value="completed" className="mt-6">
                 <RidesList
-                    rides={rides.filter(r => r.status === "completed")}
+                    rides={rides.filter(r => r.status === "COMPLETED")}
                     onStartRide={onStartRide}
                     onCompleteRide={onCompleteRide}
                 />
@@ -186,15 +246,15 @@ function RidesList({
                                 </div>
                                 <div className="flex items-center gap-2 text-slate-500">
                                     <DollarSign className="w-4 h-4" />
-                                    <span>₹{ride.pricePerKm}/km</span>
+                                    <span>₹{ride.pricePerKm}/seat</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-slate-500">
                                     <Users className="w-4 h-4" />
                                     <span>{ride.availableSeats}/{ride.totalSeats} seats</span>
                                 </div>
                                 <div>
-                                    <Badge className={statusColors[ride.status]}>
-                                        {statusLabels[ride.status]}
+                                    <Badge className={statusColors[ride.status] || statusColors.OPEN}>
+                                        {statusLabels[ride.status] || ride.status}
                                     </Badge>
                                 </div>
                             </div>
@@ -202,17 +262,17 @@ function RidesList({
                     </div>
 
                     <div className="flex gap-3">
-                        {ride.status === "scheduled" && (
+                        {(ride.status === "CREATED" || ride.status === "OPEN") && (
                             <Button onClick={() => onStartRide(ride.id)} className="flex-1 bg-slate-900 text-white hover:bg-slate-800">
                                 Start Ride
                             </Button>
                         )}
-                        {ride.status === "ongoing" && (
+                        {ride.status === "STARTED" && (
                             <Button onClick={() => onCompleteRide(ride.id)} className="flex-1 bg-green-600 text-white hover:bg-green-700">
                                 Complete Ride
                             </Button>
                         )}
-                        {ride.status === "completed" && (
+                        {ride.status === "COMPLETED" && (
                             <Button variant="outline" disabled className="flex-1">
                                 Completed
                             </Button>
@@ -234,15 +294,15 @@ function RiderRidesView({ rides }) {
             </TabsList>
 
             <TabsContent value="scheduled" className="mt-6">
-                <RiderRidesList rides={rides.filter(r => r.status === "scheduled")} />
+                <RiderRidesList rides={rides.filter(r => r.status === "CREATED" || r.status === "OPEN")} />
             </TabsContent>
 
             <TabsContent value="ongoing" className="mt-6">
-                <RiderRidesList rides={rides.filter(r => r.status === "ongoing")} />
+                <RiderRidesList rides={rides.filter(r => r.status === "STARTED")} />
             </TabsContent>
 
             <TabsContent value="completed" className="mt-6">
-                <RiderRidesList rides={rides.filter(r => r.status === "completed")} />
+                <RiderRidesList rides={rides.filter(r => r.status === "COMPLETED")} />
             </TabsContent>
         </Tabs>
     );
@@ -292,8 +352,8 @@ function RiderRidesList({ rides }) {
                         </div>
 
                         <div className="text-right">
-                            <Badge className={statusColors[ride.status]}>
-                                {statusLabels[ride.status]}
+                            <Badge className={statusColors[ride.status] || statusColors.OPEN}>
+                                {statusLabels[ride.status] || ride.status}
                             </Badge>
                             <div className="mt-3">
                                 <p className="text-xs text-slate-500">Total Fare</p>

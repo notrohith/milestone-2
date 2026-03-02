@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import { registerUser, uploadFile } from '../api/authApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
-import { Check, ChevronRight, ChevronLeft, User, Car } from 'lucide-react';
+import { Check, ChevronRight, ChevronLeft, User, Car, Clock, Mail } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 
 // Steps
@@ -22,9 +21,10 @@ const STEPS = [
 
 const SignupWizard = () => {
     const navigate = useNavigate();
-    const { signUp } = useAuth();
-
     const [currentStep, setCurrentStep] = useState(0);
+    const [showPendingModal, setShowPendingModal] = useState(false);
+    const [duplicateError, setDuplicateError] = useState(null);
+    const [isUploading, setIsUploading] = useState({ aadhar: false, pan: false, license: false, vehicleDetails: false });
     const [formData, setFormData] = useState({
         role: '', // 'RIDER' or 'DRIVER'
         email: '',
@@ -101,6 +101,11 @@ const SignupWizard = () => {
     // File Upload Helper
     const handleFileUpload = async (section, field, file) => {
         if (!file) return;
+
+        let uploadingKey = field;
+        if (field === 'images') uploadingKey = 'vehicleDetails';
+
+        setIsUploading(prev => ({ ...prev, [uploadingKey]: true }));
         try {
             const response = await uploadFile(file);
             const fileUrl = response.data; // URL returned from backend
@@ -110,11 +115,24 @@ const SignupWizard = () => {
             }));
         } catch (error) {
             console.error("File upload failed", error);
-            alert("File upload failed");
+            alert("File upload failed: " + error.message);
+        } finally {
+            setIsUploading(prev => ({ ...prev, [uploadingKey]: false }));
         }
     };
 
     const handleSubmit = async () => {
+        // Validate file uploads before sending backend request
+        if (!formData.documents.aadhar || !formData.documents.pan) {
+            alert("Please select and wait for your Aadhar and PAN cards to finish uploading.");
+            return;
+        }
+
+        if (formData.role === 'DRIVER' && (!formData.documents.license || !formData.vehicle.images || formData.vehicle.images.length === 0)) {
+            alert("Please ensure your driving license and at least one vehicle image are uploaded.");
+            return;
+        }
+
         try {
             // Logic adapted for no password: 
             // If using magic links, we'd call signInWithOtp. 
@@ -160,12 +178,18 @@ const SignupWizard = () => {
             };
 
             await registerUser(backendRequest);
-            alert("Registration successful! Please check your email for approval.");
-            navigate('/login');
+            setShowPendingModal(true);
 
         } catch (error) {
             console.error("Registration failed", error);
-            alert("Registration failed: " + error.message);
+            if (error.message.toLowerCase().includes('already registered')) {
+                setDuplicateError({
+                    title: "Email Already in Use",
+                    message: "This email address is already associated with an existing account. You cannot sign up again as a Driver/Rider with the same email. Please use a different email or log in to your existing account."
+                });
+            } else {
+                alert("Registration failed: " + error.message);
+            }
         }
     };
 
@@ -283,23 +307,26 @@ const SignupWizard = () => {
                         <div className="space-y-2">
                             <Label>Aadhar Card <span className="text-red-500">*</span></Label>
                             <div className="flex items-center gap-2">
-                                <Input required type="file" onChange={(e) => handleFileUpload('documents', 'aadhar', e.target.files[0])} />
-                                {formData.documents.aadhar && <Check className="text-green-500 w-5 h-5" />}
+                                <Input required type="file" onChange={(e) => handleFileUpload('documents', 'aadhar', e.target.files[0])} disabled={isUploading.aadhar} />
+                                {isUploading.aadhar && <span className="text-sm text-teal-600 animate-pulse">Uploading...</span>}
+                                {formData.documents.aadhar && !isUploading.aadhar && <Check className="text-green-500 w-5 h-5" />}
                             </div>
                         </div>
                         <div className="space-y-2">
                             <Label>PAN Card <span className="text-red-500">*</span></Label>
                             <div className="flex items-center gap-2">
-                                <Input required type="file" onChange={(e) => handleFileUpload('documents', 'pan', e.target.files[0])} />
-                                {formData.documents.pan && <Check className="text-green-500 w-5 h-5" />}
+                                <Input required type="file" onChange={(e) => handleFileUpload('documents', 'pan', e.target.files[0])} disabled={isUploading.pan} />
+                                {isUploading.pan && <span className="text-sm text-teal-600 animate-pulse">Uploading...</span>}
+                                {formData.documents.pan && !isUploading.pan && <Check className="text-green-500 w-5 h-5" />}
                             </div>
                         </div>
                         {formData.role === 'DRIVER' && (
                             <div className="space-y-2">
                                 <Label>Driving License <span className="text-red-500">*</span></Label>
                                 <div className="flex items-center gap-2">
-                                    <Input required type="file" onChange={(e) => handleFileUpload('documents', 'license', e.target.files[0])} />
-                                    {formData.documents.license && <Check className="text-green-500 w-5 h-5" />}
+                                    <Input required type="file" onChange={(e) => handleFileUpload('documents', 'license', e.target.files[0])} disabled={isUploading.license} />
+                                    {isUploading.license && <span className="text-sm text-teal-600 animate-pulse">Uploading...</span>}
+                                    {formData.documents.license && !isUploading.license && <Check className="text-green-500 w-5 h-5" />}
                                 </div>
                             </div>
                         )}
@@ -365,17 +392,29 @@ const SignupWizard = () => {
 
                         <div className="space-y-2">
                             <Label>Vehicle Images (Upload 4-5) <span className="text-red-500">*</span></Label>
-                            <Input required type="file" multiple onChange={async (e) => {
-                                const files = Array.from(e.target.files);
-                                // Upload all and get URLs
-                                const urls = [];
-                                for (const file of files) {
-                                    const res = await uploadFile(file);
-                                    urls.push(res.data);
-                                }
-                                handleNestedChange('vehicle', 'images', urls);
-                            }} />
-                            {formData.vehicle.images.length > 0 && <span className="text-green-500 text-sm">{formData.vehicle.images.length} images uploaded</span>}
+                            <div className="flex items-center gap-2">
+                                <Input required type="file" multiple disabled={isUploading.vehicleDetails} onChange={async (e) => {
+                                    const files = Array.from(e.target.files);
+                                    if (files.length === 0) return;
+
+                                    setIsUploading(prev => ({ ...prev, vehicleDetails: true }));
+                                    try {
+                                        const urls = [];
+                                        for (const file of files) {
+                                            const res = await uploadFile(file);
+                                            urls.push(res.data);
+                                        }
+                                        handleNestedChange('vehicle', 'images', urls);
+                                    } catch (err) {
+                                        console.error('Failed to upload vehicle images', err);
+                                        alert('Vehicle images upload failed: ' + err.message);
+                                    } finally {
+                                        setIsUploading(prev => ({ ...prev, vehicleDetails: false }));
+                                    }
+                                }} />
+                                {isUploading.vehicleDetails && <span className="text-sm text-teal-600 animate-pulse">Uploading...</span>}
+                            </div>
+                            {formData.vehicle.images.length > 0 && !isUploading.vehicleDetails && <span className="text-green-500 text-sm">{formData.vehicle.images.length} images uploaded</span>}
                         </div>
                     </div>
                 );
@@ -386,6 +425,73 @@ const SignupWizard = () => {
     return (
         <div className="min-h-screen bg-slate-50">
             <Navbar onToggleSidebar={() => { }} />
+
+            {/* Pending Verification Modal */}
+            <AnimatePresence>
+                {showPendingModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center"
+                    >
+                        {/* Backdrop */}
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
+
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.88, y: 30 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.35, ease: 'easeOut' }}
+                            className="relative z-10 bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
+                        >
+                            {/* Top gradient strip */}
+                            <div className="h-2 w-full bg-gradient-to-r from-teal-400 via-blue-500 to-purple-500" />
+
+                            <div className="px-8 py-10 text-center">
+                                {/* Animated Clock Icon */}
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
+                                    className="w-20 h-20 bg-gradient-to-br from-teal-50 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6"
+                                >
+                                    <Clock className="w-10 h-10 text-teal-500" />
+                                </motion.div>
+
+                                <h2 className="text-2xl font-bold text-gray-800 mb-3">
+                                    Registration Submitted!
+                                </h2>
+                                <p className="text-gray-500 text-sm leading-relaxed mb-2">
+                                    Please wait while we verify your account.
+                                </p>
+                                <div className="flex items-center justify-center gap-2 text-sm text-teal-600 font-medium bg-teal-50 rounded-xl px-4 py-3 mb-6">
+                                    <Mail className="w-4 h-4" />
+                                    <span>You'll receive an email once approved by our admin.</span>
+                                </div>
+
+                                {/* Animated dots */}
+                                <div className="flex items-center justify-center gap-1.5 mb-8">
+                                    {[0, 1, 2].map(i => (
+                                        <motion.div
+                                            key={i}
+                                            className="w-2.5 h-2.5 rounded-full bg-teal-400"
+                                            animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
+                                            transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.2 }}
+                                        />
+                                    ))}
+                                </div>
+
+                                <button
+                                    onClick={() => navigate('/')}
+                                    className="w-full py-3 rounded-xl bg-gradient-to-r from-teal-500 to-blue-600 text-white font-semibold text-sm hover:opacity-90 transition-all shadow-md shadow-teal-100"
+                                >
+                                    Back to Home
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             <div className="flex items-center justify-center min-h-screen p-4 pt-20">
                 <Card className="max-w-2xl w-full border-0 shadow-xl bg-white/80 backdrop-blur-sm">
                     <CardHeader>
@@ -405,43 +511,96 @@ const SignupWizard = () => {
                     </CardHeader>
 
                     <CardContent className="mt-4">
-                        {/* Wrap in form to allow native validation logic if we want, but keeping div structure for multi-step wiz control for now
-                            To forcefully validate, we would need to check existing values before handleNext(). 
-                            Added 'required' props for UI/Semantics.
-                         */}
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={currentStep}
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                {renderStep()}
-                            </motion.div>
-                        </AnimatePresence>
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            handleNext();
+                        }}>
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={currentStep}
+                                    initial={{ opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: -20 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    {renderStep()}
+                                </motion.div>
+                            </AnimatePresence>
 
-                        <div className="flex justify-between mt-8 pt-6 border-t">
-                            <Button
-                                variant="outline"
-                                onClick={handleBack}
-                                disabled={currentStep === 0}
-                            >
-                                <ChevronLeft className="w-4 h-4 mr-2" />
-                                Back
-                            </Button>
+                            <div className="flex justify-between mt-8 pt-6 border-t">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleBack}
+                                    disabled={currentStep === 0}
+                                >
+                                    <ChevronLeft className="w-4 h-4 mr-2" />
+                                    Back
+                                </Button>
 
-                            <Button
-                                onClick={handleNext}
-                                disabled={!formData.role && currentStep === 0}
-                                className="bg-teal-600 hover:bg-teal-700 text-white"
-                            >
-                                {currentStep === steps.length - 1 ? 'Submit' : 'Next'}
-                                {currentStep !== steps.length - 1 && <ChevronRight className="w-4 h-4 ml-2" />}
-                            </Button>
-                        </div>
+                                <Button
+                                    type="submit"
+                                    disabled={!formData.role && currentStep === 0}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                                >
+                                    {currentStep === steps.length - 1 || (currentStep === 2 && formData.role !== 'DRIVER') ? 'Submit' : 'Next'}
+                                    {!(currentStep === steps.length - 1 || (currentStep === 2 && formData.role !== 'DRIVER')) && <ChevronRight className="w-4 h-4 ml-2" />}
+                                </Button>
+                            </div>
+                        </form>
                     </CardContent>
                 </Card>
+
+                {/* Custom Error Modal for Duplicate Signups */}
+                <AnimatePresence>
+                    {duplicateError && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, y: 20 }}
+                                animate={{ scale: 1, y: 0 }}
+                                exit={{ scale: 0.9, y: 10, opacity: 0 }}
+                                className="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl relative overflow-hidden"
+                            >
+                                {/* Top Red Bar */}
+                                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-red-500 to-orange-500" />
+
+                                <div className="flex flex-col items-center">
+                                    <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                                        <Mail className="w-10 h-10 text-red-500" />
+                                    </div>
+
+                                    <h3 className="text-2xl font-bold mb-3 text-gray-900">{duplicateError.title}</h3>
+                                    <p className="text-gray-600 mb-8 leading-relaxed text-center">
+                                        {duplicateError.message}
+                                    </p>
+
+                                    <div className="w-full space-y-3">
+                                        <Button
+                                            type="button"
+                                            onClick={() => setDuplicateError(null)}
+                                            variant="outline"
+                                            className="w-full h-12 text-lg font-medium border-gray-200 hover:bg-gray-50 rounded-xl"
+                                        >
+                                            Try Different Email
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={() => navigate('/login')}
+                                            className="w-full h-12 text-lg font-medium bg-gray-900 text-white hover:bg-gray-800 rounded-xl shadow-md"
+                                        >
+                                            Go to Login
+                                        </Button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

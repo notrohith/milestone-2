@@ -9,12 +9,17 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Safety fallback: never let loading stay true forever
+        const safetyTimeout = setTimeout(() => setLoading(false), 10000);
+
         // Check active session
         const getSession = async () => {
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Session check timed out")), 1000));
+            // Give Supabase 8 seconds to respond (was 1s before — too short)
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Session check timed out")), 8000)
+            );
 
             try {
-                // Race between supabase check and 5s timeout
                 const { data, error } = await Promise.race([
                     supabase.auth.getSession(),
                     timeoutPromise
@@ -22,16 +27,35 @@ export const AuthProvider = ({ children }) => {
 
                 if (error) throw error;
                 if (data?.session?.user) {
-                    setUser({ ...data.session.user, role: data.session.user.user_metadata?.role || "RIDER" });
+                    let role = data.session.user.user_metadata?.role;
+                    if (!role) {
+                        try {
+                            const dbPromise = supabase
+                                .from('users')
+                                .select('role')
+                                .eq('email', data.session.user.email)
+                                .single();
+                            const timeoutPromise = new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('DB role lookup timed out')), 5000)
+                            );
+                            const { data: dbUser } = await Promise.race([dbPromise, timeoutPromise]);
+                            if (dbUser && dbUser.role) {
+                                role = dbUser.role;
+                            }
+                        } catch (e) {
+                            console.warn('Role DB lookup failed:', e.message);
+                        }
+                    }
+                    setUser({ ...data.session.user, role });
                 }
             } catch (error) {
-                if (error.name === 'AbortError' || error.message?.includes('aborted')) {
-                    console.warn("Session check aborted (clean up):", error);
+                if (error.message?.includes('timed out')) {
+                    console.warn("Session check timed out — proceeding as logged out");
                 } else {
                     console.error("Auth session error:", error);
                 }
-                // Optional: set global error state if needed
             } finally {
+                clearTimeout(safetyTimeout);
                 setLoading(false);
             }
         };
@@ -41,24 +65,42 @@ export const AuthProvider = ({ children }) => {
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
-                const role = session.user.user_metadata?.role || "RIDER";
+                let role = session.user.user_metadata?.role;
+
+                if (!role) {
+                    try {
+                        const dbPromise = supabase
+                            .from('users')
+                            .select('role')
+                            .eq('email', session.user.email)
+                            .single();
+                        const timeoutPromise = new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('DB role lookup timed out')), 5000)
+                        );
+                        const { data: dbUser } = await Promise.race([dbPromise, timeoutPromise]);
+                        if (dbUser && dbUser.role) {
+                            role = dbUser.role;
+                        }
+                    } catch (e) {
+                        console.warn('Role DB lookup failed:', e.message);
+                    }
+                }
+
                 setUser({ ...session.user, role });
 
                 // Sync with backend on login
-                try {
-                    // Only sync if role is set (meaning profile is somewhat complete) or let the CompleteProfile page handle the first sync
-                    if (role) {
-                        await syncUser({
-                            id: session.user.id,
-                            email: session.user.email,
-                            name: session.user.user_metadata?.name || session.user.email,
-                            role: role,
-                            phoneNumber: session.user.user_metadata?.phoneNumber,
-                            profilePhotoUrl: session.user.user_metadata?.avatar_url
-                        });
-                    }
-                } catch (e) {
-                    console.error("Failed to sync user to backend", e);
+                // Only sync if role is set (meaning profile is somewhat complete) or let the CompleteProfile page handle the first sync
+                if (role) {
+                    syncUser({
+                        id: session.user.id,
+                        email: session.user.email,
+                        name: session.user.user_metadata?.name || session.user.email,
+                        role: role,
+                        phoneNumber: session.user.user_metadata?.phoneNumber,
+                        profilePhotoUrl: session.user.user_metadata?.avatar_url
+                    }).catch(e => {
+                        console.error("Failed to sync user to backend", e.message);
+                    });
                 }
             } else {
                 setUser(null);
@@ -99,9 +141,15 @@ export const AuthProvider = ({ children }) => {
     };
 
     const updateProfile = async (updates) => {
-        const { error } = await supabase.auth.updateUser({
-            data: updates
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("Profile update timed out. Please try again.")), 12000);
         });
+
+        const { error } = await Promise.race([
+            supabase.auth.updateUser({ data: updates }),
+            timeoutPromise,
+        ]);
+
         if (error) throw error;
 
         // Update local user state immediately
@@ -119,7 +167,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={{ user, loading, signOut, signInWithGoogle, updateProfile, signUp }}>
-            {loading ? <div className="flex h-screen items-center justify-center">Loading RideWithMe...</div> : children}
+            {children}
         </AuthContext.Provider>
     );
 };
