@@ -33,6 +33,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/files/**").permitAll()
                 .requestMatchers("/api/rides/search").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/rides").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/rides/").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/rides/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/vehicles/**").permitAll()
                 .requestMatchers("/api/admin/reload-schema").permitAll()

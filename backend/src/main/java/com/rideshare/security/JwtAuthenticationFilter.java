@@ -41,7 +41,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return path.startsWith("/api/auth/")
             || path.startsWith("/api/files/")
             || path.equals("/api/rides/search")
-            || (path.equals("/api/rides") && "POST".equalsIgnoreCase(method))
+            || ((path.equals("/api/rides") || path.equals("/api/rides/")) && "POST".equalsIgnoreCase(method))
             || (path.startsWith("/api/rides/") && "GET".equalsIgnoreCase(method))
             || path.equals("/api/admin/reload-schema")
             || path.equals("/api/admin/send-approval-email");
